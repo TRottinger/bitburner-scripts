@@ -2,7 +2,7 @@
 
 A collection of scripts that I use for the game [BitBurner](https://github.com/danielyxie/bitburner)
 
-Note: I don't promise that these scripts are fully optimized. 
+Note: I don't promise that these scripts are fully optimized.
 
 ## Important Scripts
 
