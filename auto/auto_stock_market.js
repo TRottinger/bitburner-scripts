@@ -3,16 +3,17 @@
  * Will use manual sampling if user has no access to 4S API
  * Otherwise, will use 4S API to calculate optimal investments
  * This script assumes you can SHORT STOCKS!
- * 
- * It currently uses all available money
+ *
  */
 
 const commission = 100000;
 const numCycles = 1;
 let equity = 0;
+let minLiquid = 0;
 let maxOwnedShares = 50000;
 const samplingLength = 30;
 
+const percentKeepLiquid = 0.05; // keep 5% of assets in cash
 /**
  * Get stock data based on symbol
  * 
@@ -77,8 +78,47 @@ function calculateEquity(ns, longStocks, shortStocks) {
     shortStocks.forEach((stock) => {
         equity += stock.shortShares * stock.askPrice;
     })
-    maxOwnedShares = Math.max(Math.sqrt(equity) * 2, 10000);
+    maxOwnedShares = Math.max(Math.sqrt(equity) * 8, 10000);
     return equity
+}
+
+/**
+ * Converts some stocks to cash based on liquid %
+ * 
+ * @param {NS} ns
+ * @param {[]} longStocks
+ * @param {[]} shortStocks
+ * 
+ **/
+function liquidize(ns, longStocks, shortStocks) {
+    let cash = ns.getServerMoneyAvailable("home");
+    minLiquid = (cash + equity) * percentKeepLiquid;
+    let shortIndex = shortStocks.length - 1;
+    let longIndex = longStocks.length - 1;
+    while (cash < minLiquid) {
+        if (longIndex < 0 && shortIndex < 0) {
+            break;
+        }
+        if (shortIndex < 0) {
+            const minShares = Math.ceil((minLiquid - cash) / longStocks[longIndex].askPrice);
+            sell(ns, longStocks[longIndex].sym, minShares, longStocks[longIndex].longPrice);
+            longIndex -= 1;
+        } else if (longIndex < 0) {
+            const minShares = Math.ceil((minLiquid - cash) / shortStocks[shortIndex].bidPrice);
+            sell(ns, shortStocks[shortIndex].sym, minShares, shortStocks[shortIndex].shortPrice);
+            shortIndex -= 1;
+        } else if (longStocks[longIndex].expRet <= -1 * shortStocks[shortIndex].expRet) {
+            const minShares = Math.ceil((minLiquid - cash) / longStocks[longIndex].askPrice);
+            sell(ns, longStocks[longIndex].sym, minShares, longStocks[longIndex].longPrice);
+            longIndex -= 1;
+        } else {
+            const minShares = Math.ceil((minLiquid - cash) / shortStocks[shortIndex].bidPrice);
+            sell(ns, shortStocks[shortIndex].sym, minShares, shortStocks[shortIndex].shortPrice);
+            shortIndex -= 1;
+        }
+        cash = ns.getServerMoneyAvailable("home");
+        minLiquid = (cash + equity) * percentKeepLiquid;
+    }
 }
 
 /**
@@ -215,6 +255,17 @@ const pos = samples.reduce((acc, curr) => acc + (curr > 1. ? 1 : 0), 0);
 return Math.round(100*(2*pos / samples.length - 1));
 }
 
+/**
+ * Get money to spend
+ * 
+ * @param {NS} ns 
+ */
+function getMoneyToSpend(ns) {
+    let money = ns.getServerMoneyAvailable("home");
+    money = money - minLiquid;
+    return money;
+}
+
 /** 
  * This function
  * 
@@ -266,7 +317,7 @@ async function noApiLoop(ns) {
                     sellShort(ns, stock.sym, stock.shortShares, stock.shortPrice);
                 }
             } else {
-                const money = ns.getServerMoneyAvailable("home");
+                const money = getMoneyToSpend(ns);
                 if (state > 0) {
                     const sharesToBuy = Math.min(10000, stock.maxShares, Math.floor((money - commission) / stock.askPrice));
                     buy(ns, stock.sym, sharesToBuy);
@@ -300,12 +351,12 @@ async function apiLoop(ns) {
                 myShortStocks.push(stock);
             }
         }
-
-        calculateEquity(ns, myLongStocks, myShortStocks);
-
         stocks.sort(function (a, b) { return b.expRet - a.expRet });
         myLongStocks.sort(function (a, b) { return b.expRet - a.expRet });
         myShortStocks.sort(function (a, b) { return a.expRet - b.expRet });
+
+        calculateEquity(ns, myLongStocks, myShortStocks);
+        liquidize(ns, myLongStocks, myShortStocks);
 
         let longIndex = 0;
         let shortIndex = stocks.length - 1;
@@ -352,7 +403,7 @@ async function apiLoop(ns) {
         }
 
         //Buy shares with cash remaining in hand
-        let cashToSpend = ns.getServerMoneyAvailable("home");
+        let cashToSpend = getMoneyToSpend(ns);
         //calculate max number of shares to buy
         if (bestLongStock != null) {
             let numBuyShares = Math.min(Math.floor((cashToSpend - commission) / bestLongStock.askPrice), maxLongSharesAvailable, maxOwnedShares);
