@@ -4,6 +4,10 @@ A collection of scripts that I use for the game [BitBurner](https://github.com/d
 
 Note: I don't promise that these scripts are fully optimized.
 
+## Note
+
+If you use any of the scripts in the auto/ directory, you will have to copy the scripts/ folder into the home area. The scripts under the auto/ folder will call out scripts with syntax such as "/scripts/scriptName.js", so make sure the scripts live in a scripts folder.
+
 ## Important Scripts
 
 All the important scripts can be found under the auto folder. The scripts under the scripts folder are mainly helper scripts.
